@@ -67,7 +67,7 @@ export default function Profile({ navigate }: { navigate: (screen: string, type:
     const studentId = localStorage.getItem('ck_current_student');
     if (studentId) {
       try {
-        
+
         const st = await api.getStudent(studentId);
         setStudent(st);
 
@@ -170,7 +170,7 @@ export default function Profile({ navigate }: { navigate: (screen: string, type:
         });
         setEditDialogOpen(false);
         toast.success("Student updated successfully");
-        fetchProfileData(); 
+        fetchProfileData();
       } catch (err) {
         toast.error("Failed to update student");
       }
@@ -196,10 +196,10 @@ export default function Profile({ navigate }: { navigate: (screen: string, type:
     try {
       for (const month of unpaidMonths) {
         if (remainingAmount <= 0) break;
-        
+
         const owed = month.fee - month.paid;
         const payForThisMonth = Math.min(owed, remainingAmount);
-        
+
         await api.addTransaction({
           studentId: student._id,
           studentName: student.name,
@@ -230,10 +230,10 @@ export default function Profile({ navigate }: { navigate: (screen: string, type:
         dueAmount: newDueAmount,
         status: newDueAmount === 0 ? 'Paid' : 'Partial'
       });
-      
+
       setPaymentDialogOpen(false);
       toast.success(`₹${paymentAmount} payment recorded successfully!`);
-      fetchProfileData(); 
+      fetchProfileData();
     } catch (error) {
       toast.error("Failed to process the payment.");
     }
@@ -254,6 +254,42 @@ export default function Profile({ navigate }: { navigate: (screen: string, type:
     }
   };
 
+  const handleWhatsAppReminder = () => {
+    if (!student) return;
+
+    const teacherName = localStorage.getItem('ck_teacher_name') || 'Your Teacher';
+    const amount = student.dueAmount;
+    const guardian = student.guardianName || 'Parent/Guardian';
+    const studentName = student.name;
+
+    const reminderMessage = `Dear ${guardian},
+
+Greetings! 
+
+This is a gentle and respectful reminder regarding the pending tuition fee of ₹${amount} for your ward, ${studentName}. We kindly request you to clear the dues at your earliest convenience to ensure their uninterrupted learning and academic progress.
+
+──────────────────────
+
+आदरणीय ${guardian} जी,
+
+नमस्कार! 
+
+यह आपके पाल्य/पाल्या, ${studentName}, की बकाया ट्यूशन फीस (₹${amount}) के संबंध में एक विनम्र अनुस्मारक (reminder) है। उनके निर्बाध अध्ययन और शैक्षणिक प्रगति को सुनिश्चित करने के लिए, कृपया जल्द से जल्द देय राशि का भुगतान करने की कृपा करें।
+
+Warm regards / सादर,
+- ${teacherName}`;
+
+    // Clean the phone number (removes dashes/spaces)
+    // Clean the phone number: Target Guardian first, fallback to Student if missing
+    const targetPhone = student.guardianPhone || student.whatsapp;
+    const cleanPhone = targetPhone ? targetPhone.replace(/[^0-9]/g, '') : '';
+
+    // Build the URL (Add 91 if you only deal with Indian numbers and they aren't saved with it)
+    const whatsappUrl = `https://wa.me/91${cleanPhone}?text=${encodeURIComponent(reminderMessage)}`;
+
+    window.open(whatsappUrl, '_blank');
+  };
+
   // 6. JSX RENDER
   return (
     <div className="min-h-[100dvh] pb-24">
@@ -269,7 +305,7 @@ export default function Profile({ navigate }: { navigate: (screen: string, type:
             </div>
             <h1 className="font-headline text-base font-black text-primary dark:text-white uppercase tracking-widest">CLASSKHATA</h1>
           </div>
-          
+
           <div className="flex items-center gap-2">
             <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
               <DialogTrigger>
@@ -278,45 +314,45 @@ export default function Profile({ navigate }: { navigate: (screen: string, type:
                 </div>
               </DialogTrigger>
               <DialogContent className="sm:max-w-[380px] w-[90vw] rounded-2xl p-0 overflow-hidden bg-background border-none shadow-2xl">
-                 <DialogHeader className="p-5 pb-2 bg-surface-container-lowest border-b border-outline-variant/30">
-                   <DialogTitle className="font-headline text-lg font-black text-primary">Edit Student</DialogTitle>
-                 </DialogHeader>
-                 <div className="max-h-[60vh] overflow-y-auto p-5 space-y-4">
+                <DialogHeader className="p-5 pb-2 bg-surface-container-lowest border-b border-outline-variant/30">
+                  <DialogTitle className="font-headline text-lg font-black text-primary">Edit Student</DialogTitle>
+                </DialogHeader>
+                <div className="max-h-[60vh] overflow-y-auto p-5 space-y-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Student Name</Label>
+                    <Input value={editName} onChange={e => setEditName(e.target.value)} className="bg-surface-container-lowest" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Guardian Name</Label>
+                    <Input value={editGuardianName} onChange={e => setEditGuardianName(e.target.value)} placeholder="e.g., Rajesh Sharma" className="bg-surface-container-lowest" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
-                      <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Student Name</Label>
-                      <Input value={editName} onChange={e => setEditName(e.target.value)} className="bg-surface-container-lowest" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Guardian Name</Label>
-                      <Input value={editGuardianName} onChange={e => setEditGuardianName(e.target.value)} placeholder="e.g., Rajesh Sharma" className="bg-surface-container-lowest" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Phone</Label>
-                        <Input value={editGuardianPhone} onChange={e => setEditGuardianPhone(e.target.value)} type="tel" placeholder="10-digit number" className="bg-surface-container-lowest" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">WhatsApp</Label>
-                        <Input value={editWhatsapp} onChange={e => setEditWhatsapp(e.target.value)} type="tel" className="bg-surface-container-lowest" />
-                      </div>
+                      <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Phone</Label>
+                      <Input value={editGuardianPhone} onChange={e => setEditGuardianPhone(e.target.value)} type="tel" placeholder="10-digit number" className="bg-surface-container-lowest" />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Class / Grade</Label>
-                      <Input value={editClassGrade} onChange={e => setEditClassGrade(e.target.value)} className="bg-surface-container-lowest" />
+                      <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">WhatsApp</Label>
+                      <Input value={editWhatsapp} onChange={e => setEditWhatsapp(e.target.value)} type="tel" className="bg-surface-container-lowest" />
                     </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Subjects</Label>
-                      <Input value={editSubjects} onChange={e => setEditSubjects(e.target.value)} className="bg-surface-container-lowest" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Monthly Fee (₹)</Label>
-                      <Input value={editMonthlyFee} onChange={e => setEditMonthlyFee(e.target.value)} type="number" className="bg-surface-container-lowest" />
-                    </div>
-                 </div>
-                 <div className="p-3 bg-surface-container-lowest border-t border-outline-variant/30 flex justify-end gap-2">
-                    <Button variant="outline" onClick={() => setEditDialogOpen(false)} className="rounded-xl font-bold">Cancel</Button>
-                    <Button onClick={handleEditSubmit} className="bg-primary text-primary-foreground rounded-xl font-bold">Save Changes</Button>
-                 </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Class / Grade</Label>
+                    <Input value={editClassGrade} onChange={e => setEditClassGrade(e.target.value)} className="bg-surface-container-lowest" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Subjects</Label>
+                    <Input value={editSubjects} onChange={e => setEditSubjects(e.target.value)} className="bg-surface-container-lowest" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Monthly Fee (₹)</Label>
+                    <Input value={editMonthlyFee} onChange={e => setEditMonthlyFee(e.target.value)} type="number" className="bg-surface-container-lowest" />
+                  </div>
+                </div>
+                <div className="p-3 bg-surface-container-lowest border-t border-outline-variant/30 flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setEditDialogOpen(false)} className="rounded-xl font-bold">Cancel</Button>
+                  <Button onClick={handleEditSubmit} className="bg-primary text-primary-foreground rounded-xl font-bold">Save Changes</Button>
+                </div>
               </DialogContent>
             </Dialog>
 
@@ -360,18 +396,18 @@ export default function Profile({ navigate }: { navigate: (screen: string, type:
           </div>
           <div className="grid grid-cols-2 gap-2 border-t border-outline-variant/30 pt-3">
             <div className="flex flex-col">
-               <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Guardian</span>
-               <div className="flex items-center gap-1.5">
-                 <span className="material-symbols-outlined text-primary text-[14px]">person</span>
-                 <span className="font-bold text-xs text-foreground truncate">{student.guardianName || 'N/A'}</span>
-               </div>
+              <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Guardian</span>
+              <div className="flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-primary text-[14px]">person</span>
+                <span className="font-bold text-xs text-foreground truncate">{student.guardianName || 'N/A'}</span>
+              </div>
             </div>
             <div className="flex flex-col">
-               <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">WhatsApp / Call</span>
-               <div className="flex items-center gap-1.5">
-                 <span className="material-symbols-outlined text-primary text-[14px]">call</span>
-                 <span className="font-bold text-xs text-foreground truncate">{student.whatsapp}</span>
-               </div>
+              <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">WhatsApp / Call</span>
+              <div className="flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-primary text-[14px]">call</span>
+                <span className="font-bold text-xs text-foreground truncate">{student.whatsapp}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -379,133 +415,131 @@ export default function Profile({ navigate }: { navigate: (screen: string, type:
         {/* Payment Summary Section - Professional Mobile */}
         <div className="grid grid-cols-1 gap-3 mb-3">
           <Card className="bg-surface-container-lowest border-outline-variant shadow-sm rounded-xl p-3 relative overflow-hidden">
-             <div className="absolute top-0 right-0 w-20 h-20 bg-primary/5 rounded-full -mr-10 -mt-10 blur-xl"></div>
-             
-             <div className="flex justify-between items-center mb-3">
-                <div>
-                  <span className="text-[8px] font-bold text-muted-foreground uppercase tracking-widest block mb-0.5">Fixed Monthly Fee</span>
-                  <p className="text-foreground font-black text-xs">₹{student.monthlyFee} <span className="text-[9px] text-muted-foreground font-bold">/ MONTH</span></p>
-                </div>
-                <div className="flex flex-col items-end">
-                  {student.status === 'Paid' && <Badge className="bg-green-100 text-green-700 rounded-lg font-bold uppercase text-[7px] px-1.5 py-0.5">Fully Paid</Badge>}
-                  {student.status === 'Partial' && <Badge className="bg-orange-100 text-orange-700 rounded-lg font-bold uppercase text-[7px] px-1.5 py-0.5">Partial Paid</Badge>}
-                  {student.status === 'Unpaid' && <Badge className="bg-red-100 text-red-700 rounded-lg font-bold uppercase text-[7px] px-1.5 py-0.5">Unpaid</Badge>}
-                  {student.status === 'Overdue' && <Badge variant="destructive" className="rounded-lg font-bold uppercase text-[7px] px-1.5 py-0.5">Overdue</Badge>}
-                  {student.status === 'Pending' && <Badge className="bg-tertiary-fixed text-on-tertiary-fixed-variant rounded-lg font-bold uppercase text-[7px] px-1.5 py-0.5">Pending</Badge>}
-                </div>
-             </div>
+            <div className="absolute top-0 right-0 w-20 h-20 bg-primary/5 rounded-full -mr-10 -mt-10 blur-xl"></div>
 
-             <div className="flex flex-col gap-4 bg-surface-container-low/50 p-3 rounded-xl border border-outline-variant/30">
-               <div className="flex items-center justify-between gap-2">
-                 <div className="flex flex-col">
-                   <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Pending Balance</span>
-                   <span className="text-2xl font-headline font-black text-foreground leading-none mt-1">₹{(student.dueAmount || 0).toLocaleString('en-IN')}</span>
-                 </div>
-                 
-                 <div className="flex flex-col items-end gap-2">
-                   <div className="text-[9px] font-bold text-muted-foreground uppercase bg-surface-container-high px-2 py-0.5 rounded-md">
-                     {new Date().toLocaleString('default', { month: 'short', year: 'numeric' })}
-                   </div>
-                   {student.dueAmount > 0 && (
-                     <a
-                       href={`https://wa.me/${student.whatsapp.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hello ${student.guardianName || 'Guardian'}, this is a gentle reminder that ₹${student.dueAmount} is pending for ${student.name}'s tuition fee.`)}`}
-                       target="_blank"
-                       rel="noopener noreferrer"
-                       className="flex items-center justify-center gap-1 bg-green-500 hover:bg-green-600 text-white rounded-lg px-2.5 py-1.5 shadow-sm transition-colors"
-                     >
-                       <span className="material-symbols-outlined text-[14px]">send</span>
-                       <span className="text-[9px] font-bold uppercase tracking-wider">Reminder</span>
-                     </a>
-                   )}
-                 </div>
-               </div>
-               
-               {student.dueAmount <= 0 ? (
-                 <Button disabled className="bg-surface-container-highest text-muted-foreground w-full h-12 rounded-xl font-bold flex items-center justify-center gap-2 opacity-80 cursor-not-allowed">
-                   <span className="material-symbols-outlined text-green-600">check_circle</span>
-                   <span className="text-foreground">All Dues Cleared</span>
-                 </Button>
-               ) : (
-                 <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
-                   <DialogTrigger render={<Button className="bg-primary hover:bg-primary/90 text-primary-foreground w-full h-12 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2" />}>
-                     <span className="material-symbols-outlined">payments</span>
-                     Update Payment Status
-                   </DialogTrigger>
-                   <DialogContent className="w-[90vw] rounded-3xl p-6 bg-background border-none shadow-2xl">
-                     <DialogHeader>
-                       <DialogTitle className="font-headline text-xl font-black uppercase text-primary">Record Payment</DialogTitle>
-                       <DialogDescription className="text-xs font-medium">
-                         Enter the amount received. It will automatically fill the oldest pending months first.
-                       </DialogDescription>
-                     </DialogHeader>
-                     <div className="space-y-4 py-4">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-bold uppercase text-muted-foreground tracking-widest block">Payment Date</Label>
-                          <Input 
-                            type="date" 
-                            value={paymentDate} 
-                            onChange={e => setPaymentDate(e.target.value)} 
-                            className="bg-surface-container-lowest border-outline-variant rounded-xl h-12 w-full text-sm font-medium px-3"
-                            style={{ colorScheme: 'light dark' }}
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-bold uppercase text-muted-foreground tracking-widest block">Amount Received (₹)</Label>
-                          <Input 
-                            type="number" 
-                            value={paymentAmount} 
-                            onChange={e => setPaymentAmount(e.target.value)}
-                            className="bg-surface-container-lowest border-primary/30 rounded-xl h-14 w-full text-xl font-black px-4 focus-visible:ring-primary/20"
-                            placeholder="₹ 0"
-                          />
-                          <p className="text-[10px] font-bold text-muted-foreground mt-1 text-right">
-                            Total Pending: <span className="text-destructive">₹{student.dueAmount}</span>
-                          </p>
-                        </div>
-                     </div>
-                     <div className="flex gap-2 pt-2">
-                       <Button onClick={() => setPaymentDialogOpen(false)} variant="outline" className="flex-1 rounded-xl h-12 font-bold">Cancel</Button>
-                       <Button onClick={handlePaymentSubmit} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl h-12 font-bold shadow-md">
-                         Submit ₹{paymentAmount || 0}
-                       </Button>
-                     </div>
-                   </DialogContent>
-                 </Dialog>
-               )}
-             </div>
+            <div className="flex justify-between items-center mb-3">
+              <div>
+                <span className="text-[8px] font-bold text-muted-foreground uppercase tracking-widest block mb-0.5">Fixed Monthly Fee</span>
+                <p className="text-foreground font-black text-xs">₹{student.monthlyFee} <span className="text-[9px] text-muted-foreground font-bold">/ MONTH</span></p>
+              </div>
+              <div className="flex flex-col items-end">
+                {student.status === 'Paid' && <Badge className="bg-green-100 text-green-700 rounded-lg font-bold uppercase text-[7px] px-1.5 py-0.5">Fully Paid</Badge>}
+                {student.status === 'Partial' && <Badge className="bg-orange-100 text-orange-700 rounded-lg font-bold uppercase text-[7px] px-1.5 py-0.5">Partial Paid</Badge>}
+                {student.status === 'Unpaid' && <Badge className="bg-red-100 text-red-700 rounded-lg font-bold uppercase text-[7px] px-1.5 py-0.5">Unpaid</Badge>}
+                {student.status === 'Overdue' && <Badge variant="destructive" className="rounded-lg font-bold uppercase text-[7px] px-1.5 py-0.5">Overdue</Badge>}
+                {student.status === 'Pending' && <Badge className="bg-tertiary-fixed text-on-tertiary-fixed-variant rounded-lg font-bold uppercase text-[7px] px-1.5 py-0.5">Pending</Badge>}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-4 bg-surface-container-low/50 p-3 rounded-xl border border-outline-variant/30">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-col">
+                  <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Pending Balance</span>
+                  <span className="text-2xl font-headline font-black text-foreground leading-none mt-1">₹{(student.dueAmount || 0).toLocaleString('en-IN')}</span>
+                </div>
+
+                <div className="flex flex-col items-end gap-2">
+                  <div className="text-[9px] font-bold text-muted-foreground uppercase bg-surface-container-high px-2 py-0.5 rounded-md">
+                    {new Date().toLocaleString('default', { month: 'short', year: 'numeric' })}
+                  </div>
+                  {student.dueAmount > 0 && (
+                    <button
+                      onClick={handleWhatsAppReminder}
+                      className="flex items-center justify-center gap-1 bg-green-500 hover:bg-green-600 text-white rounded-lg px-2.5 py-1.5 shadow-sm transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">send</span>
+                      <span className="text-[9px] font-bold uppercase tracking-wider">Reminder</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {student.dueAmount <= 0 ? (
+                <Button disabled className="bg-surface-container-highest text-muted-foreground w-full h-12 rounded-xl font-bold flex items-center justify-center gap-2 opacity-80 cursor-not-allowed">
+                  <span className="material-symbols-outlined text-green-600">check_circle</span>
+                  <span className="text-foreground">All Dues Cleared</span>
+                </Button>
+              ) : (
+                <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
+                  <DialogTrigger render={<Button className="bg-primary hover:bg-primary/90 text-primary-foreground w-full h-12 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2" />}>
+                    <span className="material-symbols-outlined">payments</span>
+                    Update Payment Status
+                  </DialogTrigger>
+                  <DialogContent className="w-[90vw] rounded-3xl p-6 bg-background border-none shadow-2xl">
+                    <DialogHeader>
+                      <DialogTitle className="font-headline text-xl font-black uppercase text-primary">Record Payment</DialogTitle>
+                      <DialogDescription className="text-xs font-medium">
+                        Enter the amount received. It will automatically fill the oldest pending months first.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-bold uppercase text-muted-foreground tracking-widest block">Payment Date</Label>
+                        <Input
+                          type="date"
+                          value={paymentDate}
+                          onChange={e => setPaymentDate(e.target.value)}
+                          className="bg-surface-container-lowest border-outline-variant rounded-xl h-12 w-full text-sm font-medium px-3"
+                          style={{ colorScheme: 'light dark' }}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-bold uppercase text-muted-foreground tracking-widest block">Amount Received (₹)</Label>
+                        <Input
+                          type="number"
+                          value={paymentAmount}
+                          onChange={e => setPaymentAmount(e.target.value)}
+                          className="bg-surface-container-lowest border-primary/30 rounded-xl h-14 w-full text-xl font-black px-4 focus-visible:ring-primary/20"
+                          placeholder="₹ 0"
+                        />
+                        <p className="text-[10px] font-bold text-muted-foreground mt-1 text-right">
+                          Total Pending: <span className="text-destructive">₹{student.dueAmount}</span>
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 pt-2">
+                      <Button onClick={() => setPaymentDialogOpen(false)} variant="outline" className="flex-1 rounded-xl h-12 font-bold">Cancel</Button>
+                      <Button onClick={handlePaymentSubmit} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl h-12 font-bold shadow-md">
+                        Submit ₹{paymentAmount || 0}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              )}
+            </div>
           </Card>
         </div>
 
         {/* Monthly Due Breakdown */}
         {monthlyBreakdown.length > 0 && (
-        <div className="mt-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-headline text-base font-black text-primary uppercase tracking-tight">Monthly Breakdown</h3>
-          </div>
-          <div className="space-y-2 max-h-[340px] overflow-y-auto overscroll-contain pr-1 pb-1 scrollbar-hide">
-            {monthlyBreakdown.map((b, i) => (
-              <div key={b.period + i} className="flex flex-col p-3 bg-surface-container-lowest rounded-xl border border-outline-variant/30 shadow-sm relative overflow-hidden">
-                <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${b.status === 'Paid' ? 'bg-green-500' : b.status === 'Partial' ? 'bg-orange-500' : 'bg-red-500'}`}></div>
-                <div className="flex justify-between items-center ml-2">
-                  <div>
-                    <p className="font-bold text-[13px] text-foreground uppercase tracking-tight">{b.period}</p>
-                    <p className="text-[10px] text-muted-foreground font-medium mt-0.5">Fee: ₹{b.fee} | Paid: ₹{b.paid}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className={`font-headline font-black text-sm tracking-tight ${b.status === 'Paid' ? 'text-green-600' : b.status === 'Partial' ? 'text-orange-600' : 'text-red-600'}`}>
-                      {b.status === 'Paid' ? 'CLEAR' : `DUE: ₹${b.balance}`}
-                    </p>
-                    <div className="mt-1">
-                      {b.status === 'Paid' && <Badge className="bg-green-100 text-green-700 uppercase text-[8px] px-2 py-0 border-none font-bold">Paid</Badge>}
-                      {b.status === 'Partial' && <Badge className="bg-orange-100 text-orange-700 uppercase text-[8px] px-2 py-0 border-none font-bold">Partial</Badge>}
-                      {b.status === 'Unpaid' && <Badge className="bg-red-100 text-red-700 uppercase text-[8px] px-2 py-0 border-none font-bold">Unpaid</Badge>}
+          <div className="mt-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-headline text-base font-black text-primary uppercase tracking-tight">Monthly Breakdown</h3>
+            </div>
+            <div className="space-y-2 max-h-[340px] overflow-y-auto overscroll-contain pr-1 pb-1 scrollbar-hide">
+              {monthlyBreakdown.map((b, i) => (
+                <div key={b.period + i} className="flex flex-col p-3 bg-surface-container-lowest rounded-xl border border-outline-variant/30 shadow-sm relative overflow-hidden">
+                  <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${b.status === 'Paid' ? 'bg-green-500' : b.status === 'Partial' ? 'bg-orange-500' : 'bg-red-500'}`}></div>
+                  <div className="flex justify-between items-center ml-2">
+                    <div>
+                      <p className="font-bold text-[13px] text-foreground uppercase tracking-tight">{b.period}</p>
+                      <p className="text-[10px] text-muted-foreground font-medium mt-0.5">Fee: ₹{b.fee} | Paid: ₹{b.paid}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className={`font-headline font-black text-sm tracking-tight ${b.status === 'Paid' ? 'text-green-600' : b.status === 'Partial' ? 'text-orange-600' : 'text-red-600'}`}>
+                        {b.status === 'Paid' ? 'CLEAR' : `DUE: ₹${b.balance}`}
+                      </p>
+                      <div className="mt-1">
+                        {b.status === 'Paid' && <Badge className="bg-green-100 text-green-700 uppercase text-[8px] px-2 py-0 border-none font-bold">Paid</Badge>}
+                        {b.status === 'Partial' && <Badge className="bg-orange-100 text-orange-700 uppercase text-[8px] px-2 py-0 border-none font-bold">Partial</Badge>}
+                        {b.status === 'Unpaid' && <Badge className="bg-red-100 text-red-700 uppercase text-[8px] px-2 py-0 border-none font-bold">Unpaid</Badge>}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
         )}
 
         {/* Payment History Timeline */}
@@ -530,27 +564,27 @@ export default function Profile({ navigate }: { navigate: (screen: string, type:
                     <p className="font-headline font-black text-primary text-xs tracking-tight">₹{tx.amount}</p>
                     <Badge className="bg-green-50 text-green-700 rounded-full font-black uppercase text-[7px] px-1.5 py-0 shadow-none border-none">Recorded</Badge>
                   </div>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    onClick={async () => { 
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={async () => {
                       try {
                         await api.deleteTransaction(tx._id);
                         toast.success("Payment reverted");
                         fetchProfileData();
-                      } catch(e) {
+                      } catch (e) {
                         toast.error("Failed to revert payment");
                       }
                     }}
                     className="h-7 w-7 text-destructive hover:bg-destructive/10 rounded-md"
                     title="Revert Payment"
-                   >
+                  >
                     <span className="material-symbols-outlined text-[16px]">close</span>
                   </Button>
                 </div>
               </div>
             ))}
-             {transactions.length === 0 && (
+            {transactions.length === 0 && (
               <div className="text-center text-muted-foreground text-xs py-10 bg-surface-container-low/30 rounded-2xl border-2 border-dashed border-outline-variant/50">
                 No payment history available yet
               </div>

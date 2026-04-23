@@ -44,6 +44,7 @@ export default function TeacherProfile({ navigate }: { navigate: (screen: string
         // We wrap this in a try/catch so it stops failing silently!
         const updated = await api.updateTeacherProfile({ name: editName, email: editEmail });
         setTeacher(updated);
+        localStorage.setItem('ck_teacher_name', updated.name);
         setIsEditing(false);
         setProfileErrors({});
         toast.success("Profile updated successfully!");
@@ -85,7 +86,7 @@ export default function TeacherProfile({ navigate }: { navigate: (screen: string
         <div className="flex flex-col md:flex-row items-center gap-6 bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant shadow-sm relative overflow-hidden">
           <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -mr-10 -mt-10 blur-2xl"></div>
           <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-headline text-xs font-black border border-primary/20 shadow-sm shrink-0">
-            {(localStorage.getItem('ck_teacher_name') || 'OP').split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()}
+            {(teacher?.name || 'OP').split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()}
           </div>
           <div className="text-center md:text-left z-10">
             <h2 className="text-2xl font-headline font-extrabold text-foreground tracking-tight">{teacher.name}</h2>

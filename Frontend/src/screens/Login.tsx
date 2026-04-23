@@ -29,6 +29,8 @@ export default function Login({ navigate }: { navigate: (screen: string, type: s
       
       // 3. Save it to LocalStorage
       localStorage.setItem('ck_teacher_name', teacherName); 
+
+      localStorage.setItem('ck_auth', 'true');
       
       navigate('dashboard', 'push');
       

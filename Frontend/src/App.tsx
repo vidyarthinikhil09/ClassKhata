@@ -11,14 +11,15 @@ import { ThemeProvider } from './components/ThemeProvider';
 import { Toaster } from 'sonner';
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState('login');
+  const [currentScreen, setCurrentScreen] = useState(() => {
+    // When React wakes up, check if the user is already authenticated
+    const isAuth = localStorage.getItem('ck_auth');
+    return isAuth === 'true' ? 'dashboard' : 'login';
+  }); 
+  
   const [transitionType, setTransitionType] = useState('none');
 
-  useState(() => {
-    if (localStorage.getItem('ck_auth') === 'true') {
-      setCurrentScreen('dashboard');
-    }
-  });
+  // 🗑️ Delete that extra useState block that was sitting right here! 🗑️
 
   const navigate = (screen: string, type: string) => {
     setTransitionType(type);

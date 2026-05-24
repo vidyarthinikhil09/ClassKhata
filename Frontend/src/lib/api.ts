@@ -73,4 +73,44 @@ export const api = {
     const response = await axiosClient.delete(`/transactions/${id}`);
     return response.data;
   },
+
+  // --- PASSWORD RESET ---
+  forgotPassword: async (email: string) => {
+    const response = await axiosClient.post('/auth/forgot-password', { email });
+    return response.data;
+  },
+  resetPassword: async (token: string, newPassword: string) => {
+    const response = await axiosClient.post('/auth/reset-password', { token, newPassword });
+    return response.data;
+  },
+
+  // --- MONTHLY FEE GENERATION ---
+  generateMonthlyFees: async (month: string) => {
+    const response = await axiosClient.post('/students/generate-fees', { month });
+    return response.data;
+  },
+
+  // --- LATE FEE CHARGE ---
+  chargeLateFee: async (data: { studentId: string; amount: number; date: string; period: string; note?: string }) => {
+    const response = await axiosClient.post('/transactions/charge', data);
+    return response.data;
+  },
+
+  // --- ANALYTICS ---
+  getAnalytics: async () => {
+    const response = await axiosClient.get('/transactions/analytics');
+    return response.data;
+  },
+
+  // --- PUSH NOTIFICATIONS ---
+  savePushSubscription: async (subscription: object) => {
+    const response = await axiosClient.post('/auth/push-subscription', subscription);
+    return response.data;
+  },
+  sendTestPush: async () => {
+    const response = await axiosClient.post('/auth/push-test');
+    return response.data;
+  },
 };
+
+export const VAPID_PUBLIC_KEY = 'BEVUDIkVKi4zk0o_nh1FrxhSdGaiJ3_pPqLMLUf--P2OWw057LYxUCz51UbhiaDTAL6C15OYnzO9-plb9HMrdFc';

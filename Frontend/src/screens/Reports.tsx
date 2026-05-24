@@ -1,10 +1,8 @@
-import { BarChart, Bar, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
+import { BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend } from 'recharts';
 import { Card } from "@/components/ui/card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { api } from "../lib/api";
 import { useEffect, useState } from "react";
 
-// Live MongoDB Interface
 export interface Transaction {
   _id: string;
   studentName: string;
@@ -12,62 +10,28 @@ export interface Transaction {
   date: string;
   period: string;
   type: string;
+  note?: string;
 }
 
+const PIE_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+
 export default function Reports({ navigate }: { navigate: (screen: string, type: string) => void }) {
-  const [metrics, setMetrics] = useState<any>({});
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [chartData, setChartData] = useState<any[]>([]);
+  const [analytics, setAnalytics] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'overview' | 'transactions'>('overview');
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [m, txsResponse] = await Promise.all([
-          api.getDashboardMetrics(),
-          api.getTransactions()
+        const [txsResponse, analyticsData] = await Promise.all([
+          api.getTransactions(),
+          api.getAnalytics()
         ]);
-
-        setMetrics(m || {});
-
         const txs = Array.isArray(txsResponse) ? txsResponse : [];
-        const sortedTxs = [...txs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        setTransactions(sortedTxs);
-
-        // --- LIVE TRUE CASH FLOW GRAPH CALCULATION ---
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const now = new Date();
-        const currentMonthIndex = now.getMonth();
-        const currentYear = now.getFullYear();
-
-        const dynamicChartData = [];
-        
-        // Loop backwards to get the last 6 months
-        for (let i = 5; i >= 0; i--) {
-          let targetMonth = currentMonthIndex - i;
-          let targetYear = currentYear;
-          
-          // Handle wrapping around to the previous year (e.g., if it's Feb, 3 months ago was Nov of last year)
-          if (targetMonth < 0) {
-            targetMonth += 12;
-            targetYear -= 1;
-          }
-
-          const monthName = months[targetMonth];
-          
-          // Create a YYYY-MM prefix to match against the exact transaction date (e.g., "2026-04")
-          const targetPrefix = `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}`;
-
-          // Filter by the EXACT date the money entered your pocket, ignoring the invoice 'period'
-          const monthlyRevenue = txs
-            .filter((t: Transaction) => t.date && t.date.startsWith(targetPrefix))
-            .reduce((sum: number, t: Transaction) => sum + (t.amount || 0), 0);
-
-          dynamicChartData.push({ name: monthName, revenue: monthlyRevenue });
-        }
-        
-        setChartData(dynamicChartData);
-
+        setTransactions([...txs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+        setAnalytics(analyticsData || null);
       } catch (error) {
         console.error("Failed to load reports data", error);
       } finally {
@@ -77,86 +41,316 @@ export default function Reports({ navigate }: { navigate: (screen: string, type:
     fetchData();
   }, []);
 
-  if (isLoading) return <div className="min-h-[100dvh] flex items-center justify-center font-bold text-primary">Loading Reports...</div>;
+  const exportToCSV = () => {
+    if (transactions.length === 0) return;
+    const headers = ['Date', 'Student Name', 'Period', 'Type', 'Amount (INR)', 'Note'];
+    const rows = transactions.map(t => [
+      t.date ? new Date(t.date).toLocaleDateString('en-IN') : '—',
+      t.studentName, t.period, t.type, t.amount.toString(), t.note || ''
+    ]);
+    const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `classkhata_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportToPDF = () => {
+    const teacherName = localStorage.getItem('ck_teacher_name') || 'Teacher';
+    const win = window.open('', '_blank', 'width=800,height=600');
+    if (!win) return;
+    const rows = transactions.map(t =>
+      `<tr><td>${t.date ? new Date(t.date).toLocaleDateString('en-IN') : '—'}</td><td>${t.studentName}</td><td>${t.period}</td><td>${t.type}</td><td style="text-align:right;font-weight:700;">₹${t.amount.toLocaleString('en-IN')}</td></tr>`
+    ).join('');
+    const total = transactions.reduce((s, t) => s + t.amount, 0);
+    win.document.write(`<!DOCTYPE html><html><head><title>ClassKhata Report</title><style>
+      body{font-family:Arial,sans-serif;margin:0;padding:24px;color:#111;font-size:12px;}
+      .header{text-align:center;border-bottom:2px solid #6366f1;padding-bottom:12px;margin-bottom:16px;}
+      .title{font-size:22px;font-weight:900;color:#6366f1;}
+      table{width:100%;border-collapse:collapse;margin-top:12px;}
+      th{background:#eef2ff;color:#312e81;font-size:10px;text-transform:uppercase;letter-spacing:1px;padding:8px 6px;text-align:left;border-bottom:2px solid #c7d2fe;}
+      td{padding:7px 6px;border-bottom:1px solid #e2e8f0;}
+      .total{text-align:right;font-weight:900;font-size:14px;margin-top:12px;color:#16a34a;}
+      .footer{text-align:center;font-size:10px;color:#94a3b8;margin-top:20px;}
+      @media print{body{padding:12px;}}
+    </style></head><body>
+      <div class="header"><div class="title">CLASSKHATA</div><div style="font-size:11px;color:#64748b">Transaction Report — ${teacherName}</div></div>
+      <table><thead><tr><th>Date</th><th>Student</th><th>Period</th><th>Type</th><th>Amount</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="total">Total Collected: ₹${total.toLocaleString('en-IN')}</div>
+      <div class="footer">Generated by ClassKhata · ${new Date().toLocaleDateString('en-IN')}</div>
+      <script>window.onload=()=>{window.print();}</script>
+    </body></html>`);
+    win.document.close();
+  };
+
+  const filteredTxs = transactions.filter(t =>
+    t.studentName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    t.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    t.period.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const totalCollected = transactions.reduce((s, t) => s + t.amount, 0);
+
+  if (isLoading) return (
+    <div className="min-h-dvh flex flex-col items-center justify-center gap-3">
+      <div className="w-10 h-10 rounded-2xl bg-primary flex items-center justify-center">
+        <span className="material-symbols-outlined text-primary-foreground text-[22px]">analytics</span>
+      </div>
+      <p className="font-bold text-primary text-sm">Loading Reports...</p>
+    </div>
+  );
 
   return (
-    <div className="min-h-[100dvh] pb-24">
+    <div className="min-h-dvh pb-24">
       {/* TopAppBar */}
       <header className="bg-white/70 dark:bg-background/80 backdrop-blur-2xl sticky top-0 z-40 border-b border-outline-variant/30 shadow-[0_4px_16px_rgba(0,0,0,0.02)]">
         <div className="flex justify-between items-center w-full px-4 py-2">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 bg-primary rounded-lg flex items-center justify-center text-primary-foreground shadow-sm">
-              <span className="material-symbols-outlined font-light text-[14px]">school</span>
+              <span className="material-symbols-outlined font-light text-[14px]">analytics</span>
             </div>
-            <h1 className="font-headline text-base font-black text-primary dark:text-white uppercase tracking-widest">CLASSKHATA</h1>
+            <h1 className="font-headline text-base font-black text-primary dark:text-white uppercase tracking-widest">Reports</h1>
           </div>
-          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-headline text-xs font-black border border-primary/20 shadow-sm shrink-0">
-            {(localStorage.getItem('ck_teacher_name') || 'OP').split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()}
+          <div className="flex items-center gap-2">
+            <button onClick={exportToCSV} className="flex items-center gap-1 bg-surface-container-low hover:bg-surface-container-high border border-outline-variant text-foreground text-[9px] font-bold uppercase tracking-wider px-2 py-1.5 rounded-lg transition-colors">
+              <span className="material-symbols-outlined text-[13px]">download</span> CSV
+            </button>
+            <button onClick={exportToPDF} className="flex items-center gap-1 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 text-[9px] font-bold uppercase tracking-wider px-2 py-1.5 rounded-lg transition-colors">
+              <span className="material-symbols-outlined text-[13px]">picture_as_pdf</span> PDF
+            </button>
           </div>
+        </div>
+        {/* Tabs */}
+        <div className="flex border-t border-outline-variant/30">
+          <button
+            onClick={() => setActiveTab('overview')}
+            className={`flex-1 py-2 text-[11px] font-bold uppercase tracking-wider transition-colors ${activeTab === 'overview' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground'}`}
+          >Overview</button>
+          <button
+            onClick={() => setActiveTab('transactions')}
+            className={`flex-1 py-2 text-[11px] font-bold uppercase tracking-wider transition-colors ${activeTab === 'transactions' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground'}`}
+          >Transactions ({transactions.length})</button>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 pt-5 space-y-4">
-        <div>
-          <span className="font-label text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1 block">Overview</span>
-          <h2 className="font-headline text-2xl font-extrabold tracking-tight text-primary">Financial Analytics</h2>
-        </div>
+      <main className="px-4 pt-4 space-y-4">
+        {activeTab === 'overview' ? (
+          <>
+            {/* Summary Stats */}
+            <div className="grid grid-cols-2 gap-3">
+              <Card className="bg-primary text-primary-foreground rounded-2xl p-4 border-0 shadow-md">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-primary-foreground/80 mb-1">Total Collected</p>
+                <p className="font-headline text-xl font-black">₹{totalCollected.toLocaleString('en-IN')}</p>
+              </Card>
+              <Card className="bg-surface-container-lowest border-outline-variant rounded-2xl p-4 shadow-sm">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Outstanding</p>
+                <p className="font-headline text-xl font-black text-red-500">₹{(analytics?.topDefaulters?.reduce((s: number, d: any) => s + d.dueAmount, 0) || 0).toLocaleString('en-IN')}</p>
+              </Card>
+              <Card className="bg-surface-container-lowest border-outline-variant rounded-2xl p-4 shadow-sm">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">This Month</p>
+                <p className="font-headline text-xl font-black text-green-600">₹{(analytics?.thisMonthRevenue || 0).toLocaleString('en-IN')}</p>
+              </Card>
+              <Card className="bg-surface-container-lowest border-outline-variant rounded-2xl p-4 shadow-sm">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">vs Last Month</p>
+                <p className={`font-headline text-xl font-black ${(analytics?.revenueChange || 0) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                  {(analytics?.revenueChange || 0) >= 0 ? '↑' : '↓'} {Math.abs(analytics?.revenueChange || 0)}%
+                </p>
+              </Card>
+            </div>
 
-        {/* LIVE Revenue Chart */}
-        <Card className="bg-surface-container-lowest rounded-xl p-5 shadow-sm border-outline-variant">
-          <h3 className="font-headline text-base font-bold mb-4">Monthly Revenue</h3>
-          <div className="h-48 w-full">
-            <ResponsiveContainer width="100%" height="100%" minHeight={190}>
-              <BarChart data={chartData}>
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={10} />
-                <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '8px', fontSize: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                <Bar dataKey="revenue" fill="currentColor" className="fill-primary" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
-
-        <div className="grid grid-cols-2 gap-4">
-          <Card className="bg-surface-container-lowest p-4 rounded-xl border-outline-variant flex flex-col justify-center shadow-sm">
-            <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Outstanding</p>
-            <p className="text-xl font-bold text-destructive">₹{(metrics?.pendingExpected || metrics?.pendingCollections || 0).toLocaleString('en-IN')}</p>
-          </Card>
-          <Card className="bg-surface-container-lowest p-4 rounded-xl border-outline-variant flex flex-col justify-center shadow-sm">
-            <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Avg per Student</p>
-            {/* Simple math fallback: Total collections divided by total students */}
-            <p className="text-xl font-bold text-tertiary">
-              ₹{metrics?.totalStudents ? Math.round((metrics.collectedThisMonth || 0) / metrics.totalStudents).toLocaleString('en-IN') : 0}
-            </p>
-          </Card>
-        </div>
-
-        {/* Recent Transactions */}
-        <Card className="bg-surface-container-lowest rounded-xl p-5 shadow-sm border-outline-variant">
-          <h3 className="font-headline text-base font-bold mb-3">Recent Transactions</h3>
-          <div className="space-y-3">
-            {transactions.slice(0, 5).map((t) => (
-              <div key={t._id} className="flex justify-between items-center py-2 border-b border-surface-container-high last:border-0">
-                <div className="flex gap-3 items-center">
-                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                    <span className="material-symbols-outlined text-[16px]">payments</span>
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold">{t.studentName || 'Student'} - {t.type || 'Tuition'}</p>
-                    <p className="text-[10px] text-muted-foreground">{t.date} • {t.period}</p>
-                  </div>
+            {/* Monthly Revenue Bar Chart */}
+            {analytics?.monthlyRevenue?.length > 0 && (
+              <Card className="bg-surface-container-lowest rounded-2xl p-4 shadow-sm border-outline-variant">
+                <h3 className="font-headline text-sm font-bold mb-1">Monthly Revenue</h3>
+                <p className="text-[10px] text-muted-foreground mb-3">Last 6 months collection trend</p>
+                <div className="h-44 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={analytics.monthlyRevenue}>
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={6} />
+                      <YAxis hide />
+                      <Tooltip
+                        cursor={{ fill: 'rgba(99,102,241,0.05)' }}
+                        contentStyle={{ borderRadius: '10px', fontSize: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                        formatter={(v: number) => [`₹${v.toLocaleString('en-IN')}`, 'Revenue']}
+                      />
+                      <Bar dataKey="revenue" fill="currentColor" className="fill-primary" radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
-                <span className="text-sm font-bold text-primary">+₹{(t.amount || 0).toLocaleString('en-IN')}</span>
-              </div>
-            ))}
-            {transactions.length === 0 && (
-              <div className="text-center text-xs text-muted-foreground py-4">No recent transactions found. Go to a student's profile to log a payment!</div>
+              </Card>
             )}
+
+            {/* Weekly Revenue Chart */}
+            {analytics?.weeklyRevenue?.length > 0 && (
+              <Card className="bg-surface-container-lowest rounded-2xl p-4 shadow-sm border-outline-variant">
+                <h3 className="font-headline text-sm font-bold mb-1">This Week</h3>
+                <p className="text-[10px] text-muted-foreground mb-3">Daily collections — last 7 days</p>
+                <div className="h-36 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={analytics.weeklyRevenue}>
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#64748b' }} dy={4} />
+                      <YAxis hide />
+                      <Tooltip
+                        cursor={{ fill: 'rgba(16,185,129,0.05)' }}
+                        contentStyle={{ borderRadius: '10px', fontSize: '11px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                        formatter={(v: number) => [`₹${v.toLocaleString('en-IN')}`, 'Collected']}
+                      />
+                      <Bar dataKey="revenue" fill="#10b981" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+            )}
+
+            {/* Payment Type Distribution Pie */}
+            {analytics?.paymentTypeDistribution?.length > 0 && (
+              <Card className="bg-surface-container-lowest rounded-2xl p-4 shadow-sm border-outline-variant">
+                <h3 className="font-headline text-sm font-bold mb-1">Payment Breakdown</h3>
+                <p className="text-[10px] text-muted-foreground mb-3">Distribution by payment type</p>
+                <div className="h-44 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={analytics.paymentTypeDistribution}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={65}
+                        innerRadius={30}
+                        paddingAngle={3}
+                      >
+                        {analytics.paymentTypeDistribution.map((_: any, index: number) => (
+                          <Cell key={index} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{ borderRadius: '10px', fontSize: '11px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                        formatter={(v: number) => [`₹${v.toLocaleString('en-IN')}`]}
+                      />
+                      <Legend iconSize={8} wrapperStyle={{ fontSize: '10px', fontWeight: 700 }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+            )}
+
+            {/* Class-wise Breakdown */}
+            {analytics?.classWiseBreakdown?.length > 0 && (
+              <Card className="bg-surface-container-lowest rounded-2xl p-4 shadow-sm border-outline-variant">
+                <h3 className="font-headline text-sm font-bold mb-1">Class-wise Performance</h3>
+                <p className="text-[10px] text-muted-foreground mb-3">Collection vs pending per class</p>
+                <div className="h-48 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={analytics.classWiseBreakdown} layout="vertical" margin={{ left: 0, right: 16 }}>
+                      <XAxis type="number" hide />
+                      <YAxis type="category" dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} width={70} />
+                      <Tooltip
+                        contentStyle={{ borderRadius: '10px', fontSize: '11px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                        formatter={(v: number, name: string) => [`₹${v.toLocaleString('en-IN')}`, name === 'collected' ? 'Collected' : 'Pending']}
+                      />
+                      <Bar dataKey="collected" name="Collected" fill="#6366f1" radius={[0, 4, 4, 0]} stackId="a" />
+                      <Bar dataKey="pending" name="Pending" fill="#fca5a5" radius={[0, 4, 4, 0]} stackId="a" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="flex items-center gap-4 mt-2">
+                  <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-primary"></div><span className="text-[10px] font-bold text-muted-foreground">Collected</span></div>
+                  <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-red-300"></div><span className="text-[10px] font-bold text-muted-foreground">Pending</span></div>
+                </div>
+              </Card>
+            )}
+
+            {/* Top Defaulters */}
+            {analytics?.topDefaulters?.length > 0 && (
+              <Card className="bg-surface-container-lowest rounded-2xl p-4 shadow-sm border-outline-variant">
+                <h3 className="font-headline text-sm font-bold mb-1 flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-[16px] text-red-500">warning</span>
+                  Top Defaulters
+                </h3>
+                <p className="text-[10px] text-muted-foreground mb-3">Students with highest outstanding dues</p>
+                <div className="space-y-2.5">
+                  {analytics.topDefaulters.map((d: any, i: number) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <div className="w-6 h-6 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-red-600 font-black text-[10px] shrink-0">{i + 1}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs font-bold text-foreground truncate">{d.name}</span>
+                          <span className="text-xs font-black text-red-600 ml-2">₹{d.dueAmount.toLocaleString('en-IN')}</span>
+                        </div>
+                        {d.classGrade && (
+                          <div className="w-full bg-red-100 dark:bg-red-900/20 rounded-full h-1 mt-1">
+                            <div
+                              className="bg-red-500 h-full rounded-full"
+                              style={{ width: `${Math.min(100, (d.dueAmount / analytics.topDefaulters[0].dueAmount) * 100)}%` }}
+                            ></div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+          </>
+        ) : (
+          /* Transactions Tab */
+          <div className="space-y-3">
+            {/* Search */}
+            <div className="relative">
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-[18px]">search</span>
+              <input
+                type="text"
+                placeholder="Search by name, type, period..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-4 py-2.5 text-sm bg-surface-container-lowest border border-outline-variant rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 font-medium"
+              />
+            </div>
+
+            <Card className="bg-surface-container-lowest rounded-2xl shadow-sm border-outline-variant overflow-hidden">
+              {filteredTxs.length === 0 ? (
+                <div className="text-center text-xs text-muted-foreground py-10">
+                  {searchQuery ? 'No matching transactions found.' : 'No transactions yet. Log a payment to get started!'}
+                </div>
+              ) : (
+                <div className="divide-y divide-outline-variant/30">
+                  {filteredTxs.map((t) => (
+                    <div key={t._id} className="flex justify-between items-center p-4">
+                      <div className="flex gap-3 items-center min-w-0">
+                        <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${t.type === 'Late Fee' ? 'bg-red-100 dark:bg-red-900/30 text-red-600' : 'bg-primary/10 text-primary'}`}>
+                          <span className="material-symbols-outlined text-[16px]">{t.type === 'Late Fee' ? 'schedule' : 'payments'}</span>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-foreground truncate">{t.studentName}</p>
+                          <p className="text-[10px] text-muted-foreground font-medium">
+                            {t.date ? new Date(t.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'} · {t.period}
+                          </p>
+                          {t.note && <p className="text-[10px] text-muted-foreground italic truncate">"{t.note}"</p>}
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end shrink-0 ml-2">
+                        <span className={`text-sm font-black ${t.type === 'Late Fee' ? 'text-red-600' : 'text-green-600'}`}>
+                          {t.type === 'Late Fee' ? '+' : '+'}₹{(t.amount || 0).toLocaleString('en-IN')}
+                        </span>
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md mt-0.5 ${t.type === 'Late Fee' ? 'bg-red-100 text-red-700 dark:bg-red-900/30' : t.type === 'Material' ? 'bg-amber-100 text-amber-700' : 'bg-primary/10 text-primary'}`}>
+                          {t.type || 'Tuition'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
           </div>
-        </Card>
+        )}
       </main>
 
       {/* BottomNavBar */}
-      <nav className="fixed bottom-0 left-0 md:hidden w-full flex justify-around items-center px-3 pb-3 pt-1.5 bg-white/80 dark:bg-background/80 backdrop-blur-2xl border-t border-outline-variant/30 shadow-[0_-8px_32px_rgba(0,0,0,0.05)] z-50">
+      <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-120 flex justify-around items-center px-3 pb-3 pt-1.5 bg-white/80 dark:bg-background/80 backdrop-blur-2xl border-t border-outline-variant/30 shadow-[0_-8px_32px_rgba(0,0,0,0.05)] z-50">
         <a onClick={() => navigate('dashboard', 'none')} className="cursor-pointer flex flex-col items-center justify-center text-muted-foreground px-3 py-1.5 hover:bg-surface-container-low rounded-xl transition-all">
           <span className="material-symbols-outlined text-[20px]">dashboard</span>
           <span className="font-label text-[10px] font-semibold uppercase tracking-tighter mt-0.5">Dashboard</span>
@@ -166,7 +360,7 @@ export default function Reports({ navigate }: { navigate: (screen: string, type:
           <span className="font-label text-[10px] font-semibold uppercase tracking-tighter mt-0.5">Students</span>
         </a>
         <a className="cursor-pointer flex flex-col items-center justify-center bg-primary text-primary-foreground rounded-xl px-4 py-1.5 transition-all shadow-md">
-          <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>payments</span>
+          <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>analytics</span>
           <span className="font-label text-[10px] font-semibold uppercase tracking-tighter mt-0.5">Reports</span>
         </a>
         <a onClick={() => navigate('teacher_profile', 'none')} className="cursor-pointer flex flex-col items-center justify-center text-muted-foreground px-3 py-1.5 hover:bg-surface-container-low rounded-xl transition-all">

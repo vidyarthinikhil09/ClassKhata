@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { api } from "../lib/api";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 // Replaces the old store.ts import with the live MongoDB shape
 export interface Student {
@@ -25,10 +25,12 @@ export interface Student {
   dueAmount: number;
   lastPaymentDate?: string | null;
   avatarInitials: string;
+  academicYear?: string;
 }
 
 export default function Roster({ navigate }: { navigate: (screen: string, type: string) => void }) {
   const [students, setStudents] = useState<Student[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [open, setOpen] = useState(false);
 
   // Form states
@@ -42,16 +44,21 @@ export default function Roster({ navigate }: { navigate: (screen: string, type: 
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [openingDueAmount, setOpeningDueAmount] = useState('');
+  const [academicYear, setAcademicYear] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [bulkReminderOpen, setBulkReminderOpen] = useState(false);
+  const openingDueEditedRef = useRef(false);
 
   useEffect(() => {
+    if (openingDueEditedRef.current) return;
     if (startDate && monthlyFee) {
       const start = new Date(startDate);
       const now = new Date();
       let months = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth()) + 1;
-      if (months < 1) months = 1; // At least charge for one month (the starting month)
+      if (months < 1) months = 1;
       setOpeningDueAmount((months * parseFloat(monthlyFee)).toString());
-    } else if (monthlyFee && !startDate && !openingDueAmount) {
+    } else if (monthlyFee && !startDate) {
       setOpeningDueAmount(monthlyFee);
     }
   }, [startDate, monthlyFee]);
@@ -63,12 +70,15 @@ export default function Roster({ navigate }: { navigate: (screen: string, type: 
   const [selectedStatus, setSelectedStatus] = useState('All');
 
   const fetchStudents = async () => {
+    setIsLoading(true);
     try {
       const data = await api.getStudents();
       setStudents(data || []);
     } catch (error) {
       console.error("Failed to fetch students", error);
       setStudents([]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -99,6 +109,7 @@ export default function Roster({ navigate }: { navigate: (screen: string, type: 
     // Generate Initials automatically (e.g., "Rahul Sharma" -> "RS")
     const initials = name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
 
+    setIsSubmitting(true);
     try {
       // Pushing live data to the Express backend
       await api.addStudent({
@@ -112,7 +123,8 @@ export default function Roster({ navigate }: { navigate: (screen: string, type: 
         startDate,
         endDate,
         dueAmount: due,
-        avatarInitials: initials
+        avatarInitials: initials,
+        academicYear
       });
 
       await fetchStudents();
@@ -132,11 +144,15 @@ export default function Roster({ navigate }: { navigate: (screen: string, type: 
       setStartDate('');
       setEndDate('');
       setOpeningDueAmount('');
+      setAcademicYear('');
       setErrors({});
+      openingDueEditedRef.current = false;
     } catch (error: any) {
       toast.error("Failed to add student", {
         description: error.response?.data?.message || "Check your network connection."
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -165,7 +181,16 @@ export default function Roster({ navigate }: { navigate: (screen: string, type: 
             </div>
             <h1 className="font-headline text-base font-black text-primary dark:text-white uppercase tracking-widest">CLASSKHATA</h1>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            {students.filter(s => s.dueAmount > 0).length > 0 && (
+              <button
+                onClick={() => setBulkReminderOpen(true)}
+                className="flex items-center gap-1.5 bg-green-500 hover:bg-green-600 text-white text-[10px] font-bold uppercase tracking-wider px-2.5 py-1.5 rounded-lg transition-colors shadow-sm"
+              >
+                <span className="material-symbols-outlined text-[14px]">notifications</span>
+                <span>Bulk ({students.filter(s => s.dueAmount > 0).length})</span>
+              </button>
+            )}
             <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-headline text-xs font-black border border-primary/20 shadow-sm shrink-0">
               {(localStorage.getItem('ck_teacher_name') || 'OP').split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()}
             </div>
@@ -244,7 +269,23 @@ export default function Roster({ navigate }: { navigate: (screen: string, type: 
 
         <div className="space-y-4">
           <div className="flex flex-col gap-4">
-            {filteredStudents.map((student) => (
+            {isLoading && (
+              <div className="space-y-3">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="bg-surface-container-lowest border border-outline-variant/30 rounded-xl p-4 animate-pulse">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-surface-container-high"></div>
+                      <div className="flex-1 space-y-2">
+                        <div className="h-3 bg-surface-container-high rounded w-1/2"></div>
+                        <div className="h-2 bg-surface-container-high rounded w-1/3"></div>
+                      </div>
+                      <div className="h-6 w-16 bg-surface-container-high rounded-full"></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {!isLoading && filteredStudents.map((student) => (
               <Card key={student._id} onClick={() => { localStorage.setItem('ck_current_student', student._id); navigate('profile', 'push'); }} className="bg-surface-container-lowest border-outline-variant rounded-xl p-4 transition-all hover:bg-surface-container-high group cursor-pointer shadow-sm">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -269,8 +310,16 @@ export default function Roster({ navigate }: { navigate: (screen: string, type: 
                 </div>
               </Card>
             ))}
-            {filteredStudents.length === 0 && (
-              <div className="text-center text-sm text-muted-foreground py-8">No students found matching your filters.</div>
+            {!isLoading && filteredStudents.length === 0 && students.length === 0 && (
+              <div className="text-center text-sm text-muted-foreground py-12 bg-surface-container-low/30 rounded-2xl border-2 border-dashed border-outline-variant/50">
+                <span className="material-symbols-outlined text-[40px] text-muted-foreground/40 block mb-2">school</span>
+                No students yet. Tap the + button to add your first student.
+              </div>
+            )}
+            {!isLoading && filteredStudents.length === 0 && students.length > 0 && (
+              <div className="text-center text-sm text-muted-foreground py-8 bg-surface-container-low/30 rounded-xl border border-dashed border-outline-variant/50">
+                No students match your current filters.
+              </div>
             )}
           </div>
         </div>
@@ -386,10 +435,19 @@ export default function Roster({ navigate }: { navigate: (screen: string, type: 
                 />
               </div>
               <div className="space-y-1.5 col-span-2 pt-2 border-t border-outline-variant/30">
+                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Academic Year</Label>
+                <Input
+                  value={academicYear}
+                  onChange={e => setAcademicYear(e.target.value)}
+                  placeholder="e.g. 2025-26"
+                  className="bg-surface-container-lowest"
+                />
+              </div>
+              <div className="space-y-1.5 col-span-2">
                 <Label className="text-xs font-bold uppercase tracking-wider text-primary">Opening Pending Balance (₹)</Label>
                 <Input
                   value={openingDueAmount}
-                  onChange={e => setOpeningDueAmount(e.target.value.replace(/\D/g, ''))}
+                  onChange={e => { openingDueEditedRef.current = true; setOpeningDueAmount(e.target.value.replace(/\D/g, '')); }}
                   type="text"
                   inputMode="numeric"
                   className="bg-surface-container-lowest border-primary/30 focus-visible:ring-primary/20 h-11"
@@ -399,15 +457,47 @@ export default function Roster({ navigate }: { navigate: (screen: string, type: 
               </div>
             </div>
 
-            <Button onClick={handleCreateStudent} className="w-full mt-4 bg-primary text-primary-foreground hover:bg-primary/90 font-bold rounded-xl shadow-md h-12 active:scale-95 transition-transform">
-              Save Student
+            <Button onClick={handleCreateStudent} disabled={isSubmitting} className="w-full mt-4 bg-primary text-primary-foreground hover:bg-primary/90 font-bold rounded-xl shadow-md h-12 active:scale-95 transition-transform disabled:opacity-60">
+              {isSubmitting ? 'Saving...' : 'Save Student'}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
+      {/* Bulk WhatsApp Reminder Dialog */}
+      <Dialog open={bulkReminderOpen} onOpenChange={setBulkReminderOpen}>
+        <DialogContent className="w-[90vw] max-w-[380px] rounded-2xl p-0 overflow-hidden bg-background border-none shadow-2xl">
+          <DialogHeader className="p-5 pb-3 border-b border-outline-variant/30">
+            <DialogTitle className="font-headline text-lg font-black text-primary">Bulk WhatsApp Reminder</DialogTitle>
+            <DialogDescription className="text-xs font-medium">Tap Send on each student to open WhatsApp with a pre-filled reminder.</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-y-auto p-4 space-y-2">
+            {students.filter(s => s.dueAmount > 0).map(s => {
+              const teacherName = localStorage.getItem('ck_teacher_name') || 'Your Teacher';
+              const targetPhone = s.guardianPhone || s.whatsapp;
+              const cleanPhone = targetPhone.replace(/[^0-9]/g, '');
+              const msg = `Dear ${s.guardianName || 'Parent/Guardian'},\n\nThis is a gentle reminder regarding the pending tuition fee of ₹${s.dueAmount} for your ward, ${s.name}. Kindly clear the dues at the earliest.\n\nThank you,\n${teacherName}`;
+              const url = `https://wa.me/91${cleanPhone}?text=${encodeURIComponent(msg)}`;
+              return (
+                <div key={s._id} className="flex items-center justify-between p-3 bg-surface-container-lowest rounded-xl border border-outline-variant/30">
+                  <div>
+                    <p className="font-bold text-sm text-foreground">{s.name}</p>
+                    <p className="text-[10px] text-muted-foreground font-medium">Due: <span className="text-destructive font-bold">₹{s.dueAmount}</span></p>
+                  </div>
+                  <a href={url} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-1 bg-green-500 hover:bg-green-600 text-white text-[10px] font-bold uppercase tracking-wider px-2.5 py-1.5 rounded-lg transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-[13px]">send</span> Send
+                  </a>
+                </div>
+              );
+            })}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* BottomNavBar */}
-      <nav className="fixed bottom-0 left-0 md:hidden w-full flex justify-around items-center px-3 pb-3 pt-1.5 bg-white/80 dark:bg-background/80 backdrop-blur-2xl border-t border-outline-variant/30 shadow-[0_-8px_32px_rgba(0,0,0,0.05)] z-50">
+      <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] flex justify-around items-center px-3 pb-3 pt-1.5 bg-white/80 dark:bg-background/80 backdrop-blur-2xl border-t border-outline-variant/30 shadow-[0_-8px_32px_rgba(0,0,0,0.05)] z-50">
         <div onClick={() => navigate('dashboard', 'none')} className="cursor-pointer flex flex-col items-center justify-center text-muted-foreground px-3 py-1.5 hover:bg-surface-container-low rounded-xl transition-all">
           <span className="material-symbols-outlined text-[20px]">dashboard</span>
           <span className="font-label text-[10px] font-semibold uppercase tracking-tighter mt-0.5">Dashboard</span>

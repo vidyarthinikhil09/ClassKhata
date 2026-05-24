@@ -13,31 +13,60 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
 
       VitePWA({
-        registerType: 'autoUpdate',
+        registerType: 'prompt',
         includeAssets: [
           'favicon.ico',
           'favicon-16x16.png',
           'favicon-32x32.png',
-          'apple-touch-icon.png'
+          'apple-touch-icon.png',
+          'logo-192.png',
+          'logo-512.png'
         ],
+        workbox: {
+          skipWaiting: false,
+          clientsClaim: true,
+          cleanupOutdatedCaches: true,
+          runtimeCaching: [
+            {
+              urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/i,
+              handler: 'CacheFirst',
+              options: { cacheName: 'google-fonts-cache', expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 } }
+            },
+            {
+              urlPattern: /\/api\//,
+              handler: 'NetworkFirst',
+              options: { cacheName: 'api-cache', networkTimeoutSeconds: 10, expiration: { maxEntries: 50, maxAgeSeconds: 60 * 5 } }
+            }
+          ]
+        },
         manifest: {
           name: 'ClassKhata',
           short_name: 'ClassKhata',
-          description: 'Tuition and class management app',
-          theme_color: '#0f172a',
-          background_color: '#0f172a',
+          description: 'Manage tuition fees, students, and payments effortlessly',
+          theme_color: '#6366f1',
+          background_color: '#ffffff',
           display: 'standalone',
+          orientation: 'portrait',
           start_url: '/',
+          scope: '/',
           icons: [
             {
               src: '/logo-192.png',
               sizes: '192x192',
-              type: 'image/png'
+              type: 'image/png',
+              purpose: 'any'
             },
             {
               src: '/logo-512.png',
               sizes: '512x512',
-              type: 'image/png'
+              type: 'image/png',
+              purpose: 'any'
+            },
+            {
+              src: '/logo-512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'maskable'
             }
           ]
         }

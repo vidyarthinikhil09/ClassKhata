@@ -15,6 +15,9 @@ export interface IStudent extends Document {
   dueAmount: number;
   lastPaymentDate: Date | null;
   avatarInitials: string;
+  academicYear?: string;
+  feeGeneratedMonths: string[];
+  lateFeeRate?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -37,7 +40,10 @@ const studentSchema = new Schema<IStudent>({
   },
   dueAmount: { type: Number, required: true, min: 0 },
   lastPaymentDate: { type: Date, default: null },
-  avatarInitials: { type: String }
+  avatarInitials: { type: String },
+  academicYear: { type: String, default: '' },
+  feeGeneratedMonths: { type: [String], default: [] },
+  lateFeeRate: { type: Number, default: 0 }
 }, { timestamps: true });
 
 export const Student = mongoose.model<IStudent>('Student', studentSchema);

@@ -23,6 +23,7 @@ export interface Student {
   endDate?: string;
   status: string;
   dueAmount: number;
+  lastPaymentDate?: string | null;
   avatarInitials: string;
 }
 
@@ -33,6 +34,7 @@ export interface Transaction {
   date: string;
   period: string;
   type: string;
+  note?: string;
 }
 
 export default function Profile({ navigate }: { navigate: (screen: string, type: string) => void }) {
@@ -46,11 +48,16 @@ export default function Profile({ navigate }: { navigate: (screen: string, type:
 
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
-  const [paymentPeriod, setPaymentPeriod] = useState('');
 
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [isPaymentSubmitting, setIsPaymentSubmitting] = useState(false);
+  const [paymentType, setPaymentType] = useState<'Tuition' | 'Material'>('Tuition');
+  const [paymentNote, setPaymentNote] = useState('');
+  const [lateFeeDialogOpen, setLateFeeDialogOpen] = useState(false);
+  const [lateFeeAmount, setLateFeeAmount] = useState('');
+  const [isLateFeeSubmitting, setIsLateFeeSubmitting] = useState(false);
 
   // Edit states
   const [editName, setEditName] = useState('');
@@ -60,7 +67,6 @@ export default function Profile({ navigate }: { navigate: (screen: string, type:
   const [editClassGrade, setEditClassGrade] = useState('');
   const [editSubjects, setEditSubjects] = useState('');
   const [editMonthlyFee, setEditMonthlyFee] = useState('');
-  const [editDueAmount, setEditDueAmount] = useState('');
 
   // 2. DATA FETCHING FUNCTION
   const fetchProfileData = async () => {
@@ -84,7 +90,6 @@ export default function Profile({ navigate }: { navigate: (screen: string, type:
         setEditClassGrade(st.classGrade);
         setEditSubjects(st.subjects);
         setEditMonthlyFee(fee.toString());
-        setEditDueAmount(st.dueAmount.toString());
       } catch (error) {
         toast.error("Failed to load student profile");
         navigate('roster', 'push_back');
@@ -136,23 +141,17 @@ export default function Profile({ navigate }: { navigate: (screen: string, type:
   const monthlyBreakdown = getMonthlyBreakdown();
 
   useEffect(() => {
-    if (paymentDialogOpen && monthlyBreakdown.length > 0) {
-      const oldestUnpaid = monthlyBreakdown.slice().reverse().find(b => b.status !== 'Paid');
-      if (oldestUnpaid) setPaymentPeriod(oldestUnpaid.period);
-      else setPaymentPeriod(monthlyBreakdown[0].period);
-    }
-  }, [paymentDialogOpen, monthlyBreakdown.length, student]);
-
-  useEffect(() => {
     if (paymentDialogOpen && student) {
       setPaymentAmount(student.dueAmount > 0 ? student.dueAmount.toString() : student.monthlyFee.toString());
       setPaymentDate(new Date().toISOString().split('T')[0]);
+      setPaymentType('Tuition');
+      setPaymentNote('');
     }
   }, [paymentDialogOpen, student]);
 
 
   // 👇 4. THE EARLY RETURN GOES HERE, SAFELY BELOW ALL HOOKS 👇
-  if (!student) return <div className="min-h-[100dvh] flex items-center justify-center font-bold text-primary">Loading Profile...</div>;
+  if (!student) return <div className="min-h-dvh flex items-center justify-center font-bold text-primary">Loading Profile...</div>;
 
 
   // 5. REGULAR FUNCTIONS
@@ -192,7 +191,8 @@ export default function Profile({ navigate }: { navigate: (screen: string, type:
     const chronologicalBreakdown = [...monthlyBreakdown].reverse();
     const unpaidMonths = chronologicalBreakdown.filter(b => b.status !== 'Paid');
 
-    toast.info("Processing waterfall payment...");
+    setIsPaymentSubmitting(true);
+    toast.info("Processing payment...");
     try {
       for (const month of unpaidMonths) {
         if (remainingAmount <= 0) break;
@@ -206,36 +206,19 @@ export default function Profile({ navigate }: { navigate: (screen: string, type:
           amount: payForThisMonth,
           date: paymentDate,
           period: month.period,
-          type: 'Tuition'
+          type: paymentType,
+          note: paymentNote
         });
         remainingAmount -= payForThisMonth;
       }
-
-      if (remainingAmount > 0 && chronologicalBreakdown.length > 0) {
-        const currentMonth = chronologicalBreakdown[chronologicalBreakdown.length - 1].period;
-        await api.addTransaction({
-          studentId: student._id,
-          studentName: student.name,
-          amount: remainingAmount,
-          date: paymentDate,
-          period: currentMonth,
-          type: 'Advance / Overpayment'
-        });
-      }
-
-      const currentDue = student.dueAmount || 0;
-      const newDueAmount = Math.max(0, currentDue - parseFloat(paymentAmount));
-
-      await api.updateStudent(student._id, {
-        dueAmount: newDueAmount,
-        status: newDueAmount === 0 ? 'Paid' : 'Partial'
-      });
 
       setPaymentDialogOpen(false);
       toast.success(`₹${paymentAmount} payment recorded successfully!`);
       fetchProfileData();
     } catch (error) {
       toast.error("Failed to process the payment.");
+    } finally {
+      setIsPaymentSubmitting(false);
     }
   };
 
@@ -290,9 +273,234 @@ Warm regards / सादर,
     window.open(whatsappUrl, '_blank');
   };
 
+  const handleChargeLateFee = async () => {
+    const amount = parseFloat(lateFeeAmount);
+    if (isNaN(amount) || amount <= 0) {
+      toast.error("Enter a valid late fee amount");
+      return;
+    }
+    setIsLateFeeSubmitting(true);
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const period = new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
+      await api.chargeLateFee({
+        studentId: student!._id,
+        amount,
+        date: today,
+        period,
+        note: 'Late fee charge'
+      });
+      toast.success(`Late fee of ₹${amount} charged`);
+      setLateFeeDialogOpen(false);
+      setLateFeeAmount('');
+      fetchProfileData();
+    } catch {
+      toast.error("Failed to charge late fee");
+    } finally {
+      setIsLateFeeSubmitting(false);
+    }
+  };
+
+  const generatePDFReceipt = async (tx: Transaction) => {
+    const instituteName = localStorage.getItem('ck_institute_name');
+    if (!instituteName) {
+      toast.error("Add your institute name in Profile before generating receipts");
+      navigate('teacher_profile', 'push');
+      return;
+    }
+
+    toast.info("Generating receipt…");
+
+    const jsPDFModule = await import('jspdf');
+    const jsPDF = jsPDFModule.default;
+
+    const teacherName = localStorage.getItem('ck_teacher_name') || 'Teacher';
+    const receiptNo = tx._id.slice(-8).toUpperCase();
+    const generatedOn = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+    const txDate = tx.date ? new Date(tx.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+    const hasNote = !!tx.note;
+
+    const doc = new jsPDF({ unit: 'mm', format: [80, hasNote ? 175 : 160], orientation: 'portrait' });
+
+    // ── HEADER (indigo) ──
+    doc.setFillColor(79, 70, 229);
+    doc.rect(0, 0, 80, 42, 'F');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(255, 255, 255);
+    doc.text(instituteName.substring(0, 24), 5, 13);
+
+    doc.setFontSize(6);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(199, 210, 254);
+    doc.text('PAYMENT RECEIPT  ·  POWERED BY CLASSKHATA', 5, 19);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text(`#${receiptNo}`, 75, 11, { align: 'right' });
+    doc.setFontSize(5.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(199, 210, 254);
+    doc.text('RECEIPT NO.', 75, 7.5, { align: 'right' });
+
+    doc.setDrawColor(99, 102, 241);
+    doc.setLineWidth(0.25);
+    doc.line(5, 24, 75, 24);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(255, 255, 255);
+    doc.text(teacherName.substring(0, 28), 5, 31);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(199, 210, 254);
+    doc.text('Tuition & Academic Services', 5, 37);
+
+    // ── STUDENT DETAILS ──
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.setTextColor(100, 116, 139);
+    doc.text('STUDENT DETAILS', 5, 49);
+
+    const studentRows = [
+      [{ label: 'Student Name', value: student!.name }, { label: 'Class / Grade', value: student!.classGrade }],
+      [{ label: 'Guardian', value: student!.guardianName || '—' }, { label: 'Subjects', value: (student!.subjects || '—').substring(0, 18) }],
+    ];
+    studentRows.forEach((row, ri) => {
+      row.forEach((item, ci) => {
+        const x = ci === 0 ? 5 : 42;
+        const baseY = 49 + (ri + 1) * 16;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(5.5);
+        doc.setTextColor(148, 163, 184);
+        doc.text(item.label.toUpperCase(), x, baseY - 3.5);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.setTextColor(30, 41, 59);
+        doc.text(item.value.substring(0, 20), x, baseY + 1.5);
+      });
+    });
+
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.25);
+    doc.line(5, 83, 75, 83);
+
+    // ── PAYMENT DETAILS ──
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.setTextColor(100, 116, 139);
+    doc.text('PAYMENT DETAILS', 5, 89);
+
+    const payRows = [
+      [{ label: 'Fee Period', value: tx.period }, { label: 'Fee Type', value: tx.type }],
+      [{ label: 'Payment Date', value: txDate }, { label: 'Monthly Fee', value: `Rs.${student!.monthlyFee.toLocaleString('en-IN')}` }],
+    ];
+    payRows.forEach((row, ri) => {
+      row.forEach((item, ci) => {
+        const x = ci === 0 ? 5 : 42;
+        const baseY = 89 + (ri + 1) * 16;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(5.5);
+        doc.setTextColor(148, 163, 184);
+        doc.text(item.label.toUpperCase(), x, baseY - 3.5);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.setTextColor(30, 41, 59);
+        doc.text(item.value.substring(0, 18), x, baseY + 1.5);
+      });
+    });
+
+    // ── AMOUNT BOX ──
+    doc.setFillColor(240, 253, 244);
+    doc.roundedRect(5, 120, 70, 26, 3, 3, 'F');
+    doc.setDrawColor(134, 239, 172);
+    doc.setLineWidth(0.5);
+    doc.roundedRect(5, 120, 70, 26, 3, 3, 'S');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(21, 128, 61);
+    doc.text('AMOUNT RECEIVED', 9, 127);
+    doc.setFontSize(15);
+    doc.text(`Rs.${tx.amount.toLocaleString('en-IN')}`, 9, 138);
+
+    doc.setDrawColor(21, 128, 61);
+    doc.setLineWidth(0.7);
+    doc.roundedRect(52, 126, 18, 10, 1.5, 1.5, 'S');
+    doc.setFontSize(9);
+    doc.setTextColor(21, 128, 61);
+    doc.text('PAID', 61, 133, { align: 'center' });
+
+    // ── NOTE (optional) ──
+    if (hasNote) {
+      doc.setFillColor(255, 251, 235);
+      doc.roundedRect(5, 150, 70, 14, 2, 2, 'F');
+      doc.setDrawColor(252, 211, 77);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(5, 150, 70, 14, 2, 2, 'S');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5.5);
+      doc.setTextColor(146, 64, 14);
+      doc.text('NOTE', 9, 155.5);
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(7);
+      doc.text((tx.note || '').substring(0, 52), 9, 160.5);
+    }
+
+    // ── FOOTER ──
+    const fY = hasNote ? 168 : 151;
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.25);
+    doc.line(5, fY - 3, 75, fY - 3);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text('Thank you for your payment!', 40, fY + 2, { align: 'center' });
+    doc.setFontSize(5.5);
+    doc.text(`${instituteName} · ${teacherName}`, 40, fY + 7, { align: 'center' });
+    doc.text(`Generated: ${generatedOn} · Powered by ClassKhata`, 40, fY + 12, { align: 'center' });
+
+    // ── SHARE / DOWNLOAD ──
+    const pdfBlob = doc.output('blob');
+    const fileName = `receipt_${receiptNo}.pdf`;
+    const pdfFile = new File([pdfBlob], fileName, { type: 'application/pdf' });
+
+    const downloadFallback = () => {
+      const url = URL.createObjectURL(pdfBlob);
+      const a = document.createElement('a');
+      a.href = url; a.download = fileName; a.click();
+      URL.revokeObjectURL(url);
+    };
+
+    if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+      try {
+        await navigator.share({
+          files: [pdfFile],
+          title: `Receipt - ${student!.name}`,
+          text: `Payment receipt for ${tx.period} from ${instituteName}`
+        });
+      } catch {
+        downloadFallback();
+      }
+    } else {
+      downloadFallback();
+      toast.info("PDF downloaded. Share via WhatsApp manually.");
+    }
+
+  };
+
+  const daysSinceLastPayment = (): number => {
+    if (!student?.lastPaymentDate) return -1;
+    const last = new Date(student.lastPaymentDate);
+    const now = new Date();
+    return Math.floor((now.getTime() - last.getTime()) / (1000 * 60 * 60 * 24));
+  };
+
   // 6. JSX RENDER
   return (
-    <div className="min-h-[100dvh] pb-24">
+    <div className="min-h-dvh pb-24">
       {/* TopAppBar */}
       <header className="bg-white/70 dark:bg-background/80 backdrop-blur-2xl sticky top-0 z-40 border-b border-outline-variant/30 shadow-[0_4px_16px_rgba(0,0,0,0.02)]">
         <div className="flex justify-between items-center w-full px-4 py-2">
@@ -313,7 +521,7 @@ Warm regards / सादर,
                   <span className="material-symbols-outlined text-[18px]">edit</span>
                 </div>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-[380px] w-[90vw] rounded-2xl p-0 overflow-hidden bg-background border-none shadow-2xl">
+              <DialogContent className="sm:max-w-95 w-[90vw] rounded-2xl p-0 overflow-hidden bg-background border-none shadow-2xl">
                 <DialogHeader className="p-5 pb-2 bg-surface-container-lowest border-b border-outline-variant/30">
                   <DialogTitle className="font-headline text-lg font-black text-primary">Edit Student</DialogTitle>
                 </DialogHeader>
@@ -484,6 +692,19 @@ Warm regards / सादर,
                         />
                       </div>
                       <div className="space-y-1.5">
+                        <Label className="text-xs font-bold uppercase text-muted-foreground tracking-widest block">Fee Type</Label>
+                        <div className="flex gap-2">
+                          {(['Tuition', 'Material'] as const).map(t => (
+                            <button
+                              key={t}
+                              type="button"
+                              onClick={() => setPaymentType(t)}
+                              className={`flex-1 h-10 rounded-xl font-bold text-xs uppercase tracking-wider border transition-all ${paymentType === t ? 'bg-primary text-primary-foreground border-primary shadow-sm' : 'bg-surface-container-lowest border-outline-variant text-muted-foreground hover:border-primary/40'}`}
+                            >{t}</button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
                         <Label className="text-xs font-bold uppercase text-muted-foreground tracking-widest block">Amount Received (₹)</Label>
                         <Input
                           type="number"
@@ -496,11 +717,20 @@ Warm regards / सादर,
                           Total Pending: <span className="text-destructive">₹{student.dueAmount}</span>
                         </p>
                       </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-bold uppercase text-muted-foreground tracking-widest block">Note (optional)</Label>
+                        <Input
+                          value={paymentNote}
+                          onChange={e => setPaymentNote(e.target.value)}
+                          placeholder="e.g. Paid via UPI, cash received..."
+                          className="bg-surface-container-lowest border-outline-variant rounded-xl h-10 w-full text-sm px-3"
+                        />
+                      </div>
                     </div>
                     <div className="flex gap-2 pt-2">
-                      <Button onClick={() => setPaymentDialogOpen(false)} variant="outline" className="flex-1 rounded-xl h-12 font-bold">Cancel</Button>
-                      <Button onClick={handlePaymentSubmit} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl h-12 font-bold shadow-md">
-                        Submit ₹{paymentAmount || 0}
+                      <Button onClick={() => setPaymentDialogOpen(false)} disabled={isPaymentSubmitting} variant="outline" className="flex-1 rounded-xl h-12 font-bold">Cancel</Button>
+                      <Button onClick={handlePaymentSubmit} disabled={isPaymentSubmitting} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl h-12 font-bold shadow-md disabled:opacity-60">
+                        {isPaymentSubmitting ? 'Processing...' : `Submit ₹${paymentAmount || 0}`}
                       </Button>
                     </div>
                   </DialogContent>
@@ -510,13 +740,57 @@ Warm regards / सादर,
           </Card>
         </div>
 
+        {/* Late Fee Auto-Suggestion */}
+        {student.dueAmount > 0 && daysSinceLastPayment() >= 30 && (
+          <div className="mb-3 p-3 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800/40 rounded-xl flex items-center justify-between gap-3">
+            <div>
+              <p className="font-bold text-xs text-orange-700 dark:text-orange-400 uppercase tracking-wider">Late Fee Suggestion</p>
+              <p className="text-[10px] text-orange-600/80 dark:text-orange-500/80 font-medium mt-0.5">
+                {daysSinceLastPayment()}d overdue — consider charging a late fee
+              </p>
+            </div>
+            <button
+              onClick={() => { setLateFeeAmount(''); setLateFeeDialogOpen(true); }}
+              className="shrink-0 bg-orange-500 hover:bg-orange-600 text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg transition-colors"
+            >Charge</button>
+          </div>
+        )}
+
+        {/* Late Fee Dialog */}
+        <Dialog open={lateFeeDialogOpen} onOpenChange={setLateFeeDialogOpen}>
+          <DialogContent className="w-[88vw] max-w-90 rounded-2xl p-5 bg-background border-none shadow-2xl">
+            <DialogHeader>
+              <DialogTitle className="font-headline text-lg font-black text-orange-600">Charge Late Fee</DialogTitle>
+              <DialogDescription className="text-xs font-medium">This adds to the student's due amount as a Late Fee transaction.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold uppercase text-muted-foreground tracking-widest">Late Fee Amount (₹)</Label>
+                <Input
+                  type="number"
+                  value={lateFeeAmount}
+                  onChange={e => setLateFeeAmount(e.target.value)}
+                  placeholder="e.g. 100"
+                  className="bg-surface-container-lowest border-outline-variant rounded-xl h-12 text-lg font-black px-4"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button variant="outline" onClick={() => setLateFeeDialogOpen(false)} className="flex-1 rounded-xl h-10 font-bold">Cancel</Button>
+              <Button onClick={handleChargeLateFee} disabled={isLateFeeSubmitting} className="flex-1 bg-orange-500 hover:bg-orange-600 text-white rounded-xl h-10 font-bold">
+                {isLateFeeSubmitting ? 'Charging...' : 'Charge Late Fee'}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         {/* Monthly Due Breakdown */}
         {monthlyBreakdown.length > 0 && (
           <div className="mt-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-headline text-base font-black text-primary uppercase tracking-tight">Monthly Breakdown</h3>
             </div>
-            <div className="space-y-2 max-h-[340px] overflow-y-auto overscroll-contain pr-1 pb-1 scrollbar-hide">
+            <div className="space-y-2 max-h-85 overflow-y-auto overscroll-contain pr-1 pb-1 scrollbar-hide">
               {monthlyBreakdown.map((b, i) => (
                 <div key={b.period + i} className="flex flex-col p-3 bg-surface-container-lowest rounded-xl border border-outline-variant/30 shadow-sm relative overflow-hidden">
                   <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${b.status === 'Paid' ? 'bg-green-500' : b.status === 'Partial' ? 'bg-orange-500' : 'bg-red-500'}`}></div>
@@ -551,19 +825,29 @@ Warm regards / सादर,
             {transactions.map((tx) => (
               <div key={tx._id} className="flex items-center justify-between p-3 bg-surface-container-lowest rounded-xl border border-outline-variant/30 shadow-sm transition-all hover:border-primary/20">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-primary/5 flex items-center justify-center text-primary border border-primary/10">
-                    <span className="material-symbols-outlined text-[16px]">calendar_today</span>
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center border ${tx.type === 'Late Fee' ? 'bg-orange-50 text-orange-500 border-orange-200/50' : 'bg-primary/5 text-primary border-primary/10'}`}>
+                    <span className="material-symbols-outlined text-[16px]">{tx.type === 'Late Fee' ? 'warning' : 'calendar_today'}</span>
                   </div>
                   <div>
                     <p className="font-bold text-xs text-foreground uppercase tracking-tight">{tx.period}</p>
-                    <p className="text-[8px] text-muted-foreground uppercase font-black tracking-widest">{tx.date}</p>
+                    <p className="text-[8px] text-muted-foreground uppercase font-black tracking-widest">{tx.date ? new Date(tx.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</p>
+                    {tx.note && <p className="text-[9px] text-muted-foreground italic mt-0.5 max-w-35 truncate">{tx.note}</p>}
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1.5">
                   <div className="text-right">
                     <p className="font-headline font-black text-primary text-xs tracking-tight">₹{tx.amount}</p>
-                    <Badge className="bg-green-50 text-green-700 rounded-full font-black uppercase text-[7px] px-1.5 py-0 shadow-none border-none">Recorded</Badge>
+                    <Badge className={`rounded-full font-black uppercase text-[7px] px-1.5 py-0 shadow-none border-none ${tx.type === 'Late Fee' ? 'bg-orange-50 text-orange-600' : 'bg-green-50 text-green-700'}`}>{tx.type}</Badge>
                   </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => generatePDFReceipt(tx)}
+                    className="h-7 w-7 text-primary hover:bg-primary/10 rounded-md"
+                    title="Get Receipt"
+                  >
+                    <span className="material-symbols-outlined text-[15px]">receipt</span>
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon"
@@ -572,7 +856,7 @@ Warm regards / सादर,
                         await api.deleteTransaction(tx._id);
                         toast.success("Payment reverted");
                         fetchProfileData();
-                      } catch (e) {
+                      } catch {
                         toast.error("Failed to revert payment");
                       }
                     }}
@@ -593,7 +877,7 @@ Warm regards / सादर,
         </div>
       </main>
       {/* BottomNavBar */}
-      <nav className="fixed bottom-0 left-0 md:hidden w-full flex justify-around items-center px-3 pb-3 pt-1.5 bg-white/80 dark:bg-background/80 backdrop-blur-2xl border-t border-outline-variant/30 shadow-[0_-8px_32px_rgba(0,0,0,0.05)] z-50">
+      <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-120 flex justify-around items-center px-3 pb-3 pt-1.5 bg-white/80 dark:bg-background/80 backdrop-blur-2xl border-t border-outline-variant/30 shadow-[0_-8px_32px_rgba(0,0,0,0.05)] z-50">
         <a onClick={() => navigate('dashboard', 'none')} className="cursor-pointer flex flex-col items-center justify-center text-muted-foreground px-3 py-1.5 hover:bg-surface-container-low rounded-xl transition-all">
           <span className="material-symbols-outlined text-[20px]">dashboard</span>
           <span className="font-label text-[10px] font-semibold uppercase tracking-tighter mt-0.5">Dashboard</span>

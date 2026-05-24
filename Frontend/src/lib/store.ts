@@ -3,6 +3,8 @@ export interface TeacherProfile {
   email: string;
   role: string;
   avatarInitials: string;
+  instituteName?: string;
+  photo?: string;
 }
 
 export interface Student {

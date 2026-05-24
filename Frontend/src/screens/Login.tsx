@@ -70,7 +70,7 @@ export default function Login({ navigate }: { navigate: (screen: string, type: s
             <div className="space-y-1.5">
               <div className="flex justify-between items-center px-1">
                 <label className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground" htmlFor="password">Password</label>
-                {/* <a className="text-[10px] font-bold text-primary hover:underline transition-all" href="#">Forgot?</a> */}
+                <a onClick={() => navigate('forgot_password', 'push')} className="cursor-pointer text-[10px] font-bold text-primary hover:underline transition-all">Forgot?</a>
               </div>
               <Input 
                 className="bg-muted/50 border-0 focus-visible:ring-primary/20 h-10 transition-all text-sm" 

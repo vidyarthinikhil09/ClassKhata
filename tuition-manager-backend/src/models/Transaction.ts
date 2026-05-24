@@ -8,6 +8,7 @@ export interface ITransaction extends Document {
   date: Date;
   period: string;
   type: 'Tuition' | 'Late Fee' | 'Material';
+  note?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -23,7 +24,8 @@ const transactionSchema = new Schema<ITransaction>({
     type: String,
     enum: ['Tuition', 'Late Fee', 'Material'],
     default: 'Tuition'
-  }
+  },
+  note: { type: String, default: '' }
 }, { timestamps: true });
 
 export const Transaction = mongoose.model<ITransaction>('Transaction', transactionSchema);

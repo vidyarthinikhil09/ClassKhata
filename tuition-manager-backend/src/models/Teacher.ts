@@ -4,10 +4,15 @@ import bcrypt from 'bcryptjs';
 export interface ITeacher extends Document {
   name: string;
   email: string;
-  password?: string; // Optional because of Google Auth later
+  password?: string;
   avatarInitials: string;
-  role: string; // <-- ADDED THIS
+  role: string;
   authProviderId?: string;
+  instituteName?: string;
+  photo?: string;
+  pushSubscription?: object;
+  resetToken?: string;
+  resetTokenExpiry?: Date;
   matchPassword(enteredPassword: string): Promise<boolean>;
   createdAt: Date;
   updatedAt: Date;
@@ -17,9 +22,14 @@ const teacherSchema = new Schema<ITeacher>({
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   password: { type: String }, 
-  avatarInitials: { type: String, default: 'T' }, // Added a fallback default
-  role: { type: String, default: 'Administrator' }, // <-- ADDED THIS
-  authProviderId: { type: String }
+  avatarInitials: { type: String, default: 'T' },
+  role: { type: String, default: 'Administrator' },
+  authProviderId: { type: String },
+  instituteName: { type: String, default: '' },
+  photo: { type: String, default: '' },
+  pushSubscription: { type: Schema.Types.Mixed },
+  resetToken: { type: String },
+  resetTokenExpiry: { type: Date }
 }, { timestamps: true });
 
 // Pre-save hook to hash the password before saving it to MongoDB

@@ -19,11 +19,15 @@ export default function Signup({ navigate }: { navigate: (screen: string, type: 
     }
     setLoading(true);
     try {
-      await api.register({ name, email, password });
+      const response = await api.register({ name, email, password });
+      const teacherName = response?.user?.name || name;
+      localStorage.setItem('ck_teacher_name', teacherName);
       localStorage.setItem('ck_auth', 'true');
-      navigate('dashboard', 'push');
-    } catch (err) {
-      setError('Signup failed. Try again.');
+      localStorage.removeItem('ck_institute_name'); // new account — force setup
+      navigate('setup_profile', 'push');
+    } catch (err: any) {
+      const msg = err.response?.data?.message || 'Signup failed. Please check your network and try again.';
+      setError(msg);
     } finally {
       setLoading(false);
     }

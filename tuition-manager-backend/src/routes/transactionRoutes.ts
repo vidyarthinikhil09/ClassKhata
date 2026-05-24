@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middlewares/authMiddleware';
-import { getDashboardMetrics, logPayment, getTransactions, deleteTransaction } from '../controllers/transactionController';
+import { getDashboardMetrics, getAnalytics, logPayment, getTransactions, deleteTransaction, chargeLateFee } from '../controllers/transactionController';
 import { validate } from '../middlewares/validateResource'; // Add this
 import { logPaymentSchema } from '../validations/schemas'; // Add this
 
@@ -14,9 +14,12 @@ router.route('/')
   .post(validate(logPaymentSchema), logPayment);
 
   router.get('/metrics', getDashboardMetrics);
+  router.get('/analytics', getAnalytics);
+
+router.post('/charge', chargeLateFee);
 
 router.route('/:id')
-  .delete(deleteTransaction); // <-- Added this
+  .delete(deleteTransaction);
 
 
 
